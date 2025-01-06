@@ -37,48 +37,62 @@ public class Server {
       try (
           InputStream input = socket.getInputStream();
           OutputStream output = socket.getOutputStream();
-          BufferedReader reader = new BufferedReader(new InputStreamReader(input));
-          PrintWriter writer = new PrintWriter(output, true)
+          DataInputStream dataInputStream = new DataInputStream(input);
+          DataOutputStream dataOutputStream = new DataOutputStream(output)
       ) {
-        String request;
-        while ((request = reader.readLine()) != null) {
-          String response = processarTransacao(request);
-          writer.println(response);
+        while (true) {
+          byte[] request = new byte[64];
+          dataInputStream.readFully(request);
+
+          byte[] response = processarTransacao(request);
+          dataOutputStream.write(response);
         }
       } catch (IOException e) {
         e.printStackTrace();
       }
     }
 
-    private String processarTransacao(String mensagemISO) {
-      String[] parts = mensagemISO.split(";");
-      if (parts.length != 2) {
-        return "96;0000000000"; // Código 96: Erro de formato
+    private byte[] processarTransacao(byte[] mensagemISO) {
+      // Validando tipo de mensagem
+      if (mensagemISO[0] != '0' || mensagemISO[1] != '2' || mensagemISO[2] != '0' || mensagemISO[3] != '0') {
+        return montarResposta("96", 0); // Código 96: Erro de formato
       }
 
-      String numeroCartao = parts[0];
-      double valor;
       try {
-        valor = Double.parseDouble(parts[1]);
-      } catch (NumberFormatException e) {
-        return "96;0000000000"; // Código 96: Erro de formato
-      }
+        String numeroCartao = new String(mensagemISO, 20, 16).trim();
+        double valor = Double.parseDouble(new String(mensagemISO, 4, 12).trim()) / 100.0;
 
-      synchronized (Server.class) {
         Cartao cartao = cartoes.get(numeroCartao);
         if (cartao == null) {
-          return "05;0000000000"; // Código 05: Cartão inexistente
+          return montarResposta("05", 0); // Código 05: Cartão inexistente
         }
 
         synchronized (cartao) {
           if (cartao.debitar(valor)) {
             int nsu = nsuCounter.getAndIncrement();
-            return String.format("00;%010d", nsu); // Código 00: Transação aprovada
+            return montarResposta("00", nsu); // Código 00: Transação aprovada
           } else {
-            return "51;0000000000"; // Código 51: Saldo insuficiente
+            return montarResposta("51", 0); // Código 51: Saldo insuficiente
           }
         }
+      } catch (Exception e) {
+        return montarResposta("96", 0); // Código 96: Erro de formato
       }
+    }
+
+    private byte[] montarResposta(String codigoResposta, int nsu) {
+      byte[] resposta = new byte[64];
+      resposta[0] = '0'; resposta[1] = '2'; resposta[2] = '1'; resposta[3] = '0';
+
+      // Código de resposta
+      resposta[39] = (byte) codigoResposta.charAt(0);
+      resposta[40] = (byte) codigoResposta.charAt(1);
+
+      // NSU no bit 127
+      String nsuString = String.format("%012d", nsu);
+      System.arraycopy(nsuString.getBytes(), 0, resposta, 51, nsuString.length());
+
+      return resposta;
     }
   }
 }
