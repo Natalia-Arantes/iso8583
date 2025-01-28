@@ -1,5 +1,6 @@
 import java.io.*;
 import java.net.*;
+import java.util.Random;
 
 public class Client {
   public static void main(String[] args) {
@@ -35,18 +36,37 @@ public class Client {
 
   private static byte[] montarMensagemRequisicao(String numeroCartao, int valorEmCentavos) {
     byte[] mensagem = new byte[64];
+    Random random = new Random();
 
-    mensagem[0] = '0'; mensagem[1] = '2'; mensagem[2] = '0'; mensagem[3] = '0';
+    // Tipo da mensagem - MTI 0200 (requisição de transação financeira)
+    mensagem[0] = '0';
+    mensagem[1] = '2';
+    mensagem[2] = '0';
+    mensagem[3] = '0';
+
+    // Bit 4: Valor da transação em centavos (12 dígitos, com zeros à esquerda)
     String valorString = String.format("%012d", valorEmCentavos);
     System.arraycopy(valorString.getBytes(), 0, mensagem, 4, valorString.length());
 
+    // Bit 12: Hora local da transação (6 dígitos no formato HHMMSS)
     String hora = "104446";
     System.arraycopy(hora.getBytes(), 0, mensagem, 16, hora.length());
 
+    // Bit 13: Data da transação (4 dígitos no formato MMDD)
     String data = "0512";
     System.arraycopy(data.getBytes(), 0, mensagem, 22, data.length());
 
-    System.arraycopy(numeroCartao.getBytes(), 0, mensagem, 20, numeroCartao.length());
+    // Bit 33: Rede transmissora (6 dígitos)
+    String redeTransmissora = "040104";
+    System.arraycopy(redeTransmissora.getBytes(), 0, mensagem, 26, redeTransmissora.length());
+
+    // Bit 62: Número do cartão (16 dígitos)
+    numeroCartao = String.format("%-16s", numeroCartao).replace(' ', '0'); // Completa até 16 dígitos com zeros
+    System.arraycopy(numeroCartao.getBytes(), 0, mensagem, 32, numeroCartao.length());
+
+    // Bit 62 (forma de pagamento): 1 para débito, 2 para crédito
+    String formaPagamento = String.valueOf(random.nextInt(1, 3));
+    System.arraycopy(formaPagamento.getBytes(), 0, mensagem, 48, formaPagamento.length());
 
     return mensagem;
   }

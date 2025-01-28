@@ -22,11 +22,12 @@ public class Cartao {
   }
 
   public synchronized boolean debitar(double valor) {
-    if (valor > saldo) {
-      return false; // Saldo insuficiente
+    if (valor > 0 && saldo >= valor) {
+      saldo -= valor;
+      return true;
     }
-    saldo -= valor;
-    return true;
+    return false;
   }
+
 
 }

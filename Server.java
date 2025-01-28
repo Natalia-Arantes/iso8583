@@ -53,42 +53,60 @@ public class Server {
     }
 
     private byte[] processarTransacao(byte[] mensagemISO) {
-      // Validando tipo de mensagem
       if (mensagemISO[0] != '0' || mensagemISO[1] != '2' || mensagemISO[2] != '0' || mensagemISO[3] != '0') {
-        return montarResposta("96", 0); // Código 96: Erro de formato
+        return montarResposta("96", 0, "000000000000"); // Código 96: Erro de formato
       }
 
       try {
-        String numeroCartao = new String(mensagemISO, 20, 16).trim();
-        double valor = Double.parseDouble(new String(mensagemISO, 4, 12).trim()) / 100.0;
+        String numeroCartao = new String(mensagemISO, 32, 16).trim();
+        String valorStr = new String(mensagemISO, 4, 12).trim();
+        double valor = Double.parseDouble(valorStr) / 100.0;
 
         Cartao cartao = cartoes.get(numeroCartao);
         if (cartao == null) {
-          return montarResposta("05", 0); // Código 05: Cartão inexistente
+          return montarResposta("05", 0, valorStr); // Código 05: Cartão inexistente
         }
 
         synchronized (cartao) {
           if (cartao.debitar(valor)) {
             int nsu = nsuCounter.getAndIncrement();
-            return montarResposta("00", nsu); // Código 00: Transação aprovada
+            return montarResposta("00", nsu, valorStr); // Código 00: Transação aprovada
           } else {
-            return montarResposta("51", 0); // Código 51: Saldo insuficiente
+            return montarResposta("51", 0, valorStr); // Código 51: Saldo insuficiente
           }
         }
       } catch (Exception e) {
-        return montarResposta("96", 0); // Código 96: Erro de formato
+        return montarResposta("96", 0, "000000000000"); // Código 96: Erro de formato
       }
     }
 
-    private byte[] montarResposta(String codigoResposta, int nsu) {
+    private byte[] montarResposta(String codigoResposta, int nsu, String valorTransacao) {
       byte[] resposta = new byte[64];
-      resposta[0] = '0'; resposta[1] = '2'; resposta[2] = '1'; resposta[3] = '0';
+      resposta[0] = '0';
+      resposta[1] = '2';
+      resposta[2] = '1';
+      resposta[3] = '0';
 
-      // Código de resposta
+      // Código de resposta no bit 39
       resposta[39] = (byte) codigoResposta.charAt(0);
       resposta[40] = (byte) codigoResposta.charAt(1);
 
-      // NSU no bit 127
+      // Bit 4: Valor original da transação em centavos
+      System.arraycopy(valorTransacao.getBytes(), 0, resposta, 4, valorTransacao.length());
+
+      // Bit 12: Hora local da transação
+      String horaLocal = "104446";
+      System.arraycopy(horaLocal.getBytes(), 0, resposta, 16, horaLocal.length());
+
+      // Bit 13: Data da transação
+      String dataTransacao = "0512";
+      System.arraycopy(dataTransacao.getBytes(), 0, resposta, 22, dataTransacao.length());
+
+      // Bit 33: Rede transmissora
+      String redeTransmissora = "040104";
+      System.arraycopy(redeTransmissora.getBytes(), 0, resposta, 26, redeTransmissora.length());
+
+      // NSU no bit 127 (posição 51 no array)
       String nsuString = String.format("%012d", nsu);
       System.arraycopy(nsuString.getBytes(), 0, resposta, 51, nsuString.length());
 
